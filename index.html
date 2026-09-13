@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Cooperative Inspector</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F4B3F">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  :root {
+    --paper: #F6F4EC;
+    --panel: #FFFFFF;
+    --ink: #23281F;
+    --ink-soft: #5B6152;
+    --forest: #1F4B3F;
+    --forest-deep: #163831;
+    --ochre: #B4791F;
+    --ochre-soft: #F1E2C6;
+    --line: #DFDACB;
+    --good: #3F7A5C;
+    --bad: #A8462F;
+    --radius: 4px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; }
+
+  #app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    background: var(--forest);
+    color: #fff;
+    padding: 18px 18px 14px;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .topbar .eyebrow { font-size: 12px; color: #BFDACE; letter-spacing: 0.02em; margin-bottom: 2px; }
+  .topbar h1 { margin: 0; font-size: 21px; font-weight: 600; }
+  .society-line {
+    margin-top: 10px; display: flex; gap: 8px;
+  }
+  .society-line input {
+    flex: 1; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+    color: #fff; border-radius: var(--radius); padding: 8px 10px; font-size: 14px;
+  }
+  .society-line input::placeholder { color: #C9DED5; }
+
+  .progress-wrap { background: rgba(255,255,255,0.18); height: 5px; border-radius: 3px; margin-top: 12px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--ochre); transition: width 0.25s ease; }
+  .progress-label { font-size: 11.5px; color: #CFE3DA; margin-top: 5px; }
+
+  /* ---------- Content ---------- */
+  .content { flex: 1; padding: 14px 14px 110px; }
+
+  .section-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px; cursor: pointer; user-select: none;
+  }
+  .section-head-left { display: flex; align-items: center; gap: 10px; }
+  .section-title { font-size: 15.5px; font-weight: 600; color: var(--forest-deep); }
+  .section-count { font-size: 12px; color: var(--ink-soft); }
+  .chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600;
+    background: var(--ochre-soft); color: var(--ochre);
+  }
+  .chip.done { background: #DCEDE4; color: var(--good); }
+  .caret { font-size: 12px; color: var(--ink-soft); transition: transform 0.2s ease; }
+  .section-card.open .caret { transform: rotate(180deg); }
+
+  .section-body { display: none; border-top: 1px solid var(--line); }
+  .section-card.open .section-body { display: block; }
+
+  .item-row { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .item-row:last-child { border-bottom: none; }
+  .item-text { font-size: 13.5px; line-height: 1.45; margin-bottom: 8px; }
+  .item-controls { display: flex; gap: 6px; margin-bottom: 6px; }
+  .seg-btn {
+    flex: 1; padding: 7px 0; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--line); background: #fff; color: var(--ink-soft);
+    border-radius: var(--radius); text-align: center;
+  }
+  .seg-btn.active-yes { background: var(--good); border-color: var(--good); color: #fff; }
+  .seg-btn.active-no { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .seg-btn.active-na { background: #8A8577; border-color: #8A8577; color: #fff; }
+  .remarks-input {
+    width: 100%; padding: 7px 9px; font-size: 13px; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--paper); color: var(--ink);
+  }
+
+  /* ---------- Bottom bar ---------- */
+  .bottombar {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    background: #fff; border-top: 1px solid var(--line);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    display: flex; gap: 8px; z-index: 30;
+  }
+  .btn {
+    flex: 1; padding: 12px 0; border-radius: var(--radius); font-size: 14px; font-weight: 600;
+    border: none; text-align: center;
+  }
+  .btn-primary { background: var(--forest); color: #fff; }
+  .btn-primary:disabled { background: #B9C4BE; }
+  .btn-secondary { background: var(--ochre-soft); color: var(--ochre); }
+
+  /* ---------- Report modal ---------- */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(20,24,18,0.55);
+    z-index: 50; align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-sheet {
+    background: var(--paper); width: 100%; max-width: 480px; max-height: 86vh;
+    border-radius: 14px 14px 0 0; display: flex; flex-direction: column;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .modal-head {
+    padding: 16px 16px 10px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .modal-head h2 { margin: 0; font-size: 17px; color: var(--forest-deep); }
+  .modal-close { background: none; border: none; font-size: 22px; color: var(--ink-soft); line-height: 1; }
+  .modal-body { padding: 16px; overflow-y: auto; font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; }
+  .modal-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); display: flex; gap: 8px; }
+
+  .loading-dots { display: flex; gap: 6px; align-items: center; padding: 30px 0; justify-content: center; color: var(--ink-soft); font-size: 13px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ochre); animation: bounce 1.1s infinite ease-in-out; }
+  .dot:nth-child(2) { animation-delay: 0.15s; } .dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce { 0%,80%,100% { transform: scale(0.6); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; } }
+
+  .toast {
+    position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--forest-deep); color: #fff; padding: 9px 16px; border-radius: 20px;
+    font-size: 13px; opacity: 0; transition: all 0.25s ease; z-index: 60; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="eyebrow">COOPERATIVE INSPECTOR</div>
+    <h1 class="serif">পরিদর্শন চেকলিস্ট</h1>
+    <div class="society-line">
+      <input id="societyName" type="text" placeholder="সমিতির নাম লিখুন">
+      <input id="societyType" type="text" placeholder="ধরন (কৃষি/আবাসন/ঋণদান...)" style="max-width:38%">
+    </div>
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+    <div class="progress-label" id="progressLabel">০ / ০ আইটেম সম্পন্ন</div>
+  </div>
+
+  <div class="content" id="sectionsContainer"></div>
+
+  <div class="bottombar">
+    <button class="btn btn-secondary" id="saveBtn">💾 সেভ করুন</button>
+    <button class="btn btn-primary" id="generateBtn">✨ AI রিপোর্ট তৈরি করুন</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-sheet">
+    <div class="modal-head">
+      <h2 class="serif">পরিদর্শন রিপোর্ট</h2>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" id="copyBtn">📋 কপি করুন</button>
+      <button class="btn btn-primary" id="modalDoneBtn">ঠিক আছে</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SECTIONS = [
+  { key: "gov", title: "গভর্ন্যান্স ও ব্যবস্থাপনা", items: [
+    "বার্ষিক সাধারণ সভা (AGM) সময়মতো অনুষ্ঠিত হয়েছে",
+    "বোর্ড / পরিচালনা কমিটির সভা নিয়মিত হয়",
+    "সভার কার্যবিবরণী (মিনিটস) সঠিকভাবে লিপিবদ্ধ ও স্বাক্ষরিত",
+    "উপ-বিধি (বাইলজ) হালনাগাদ ও সহজলভ্য",
+    "পদাধিকারী নির্বাচন নিয়ম অনুযায়ী সম্পন্ন হয়েছে",
+  ]},
+  { key: "mem", title: "সদস্য সংক্রান্ত রেকর্ড", items: [
+    "সদস্য রেজিস্টার হালনাগাদ রাখা হয়েছে",
+    "নতুন সদস্য ভর্তি প্রক্রিয়া বিধি অনুযায়ী অনুসরণ করা হয়",
+    "শেয়ার সার্টিফিকেট সঠিকভাবে ইস্যু ও রেকর্ড করা হয়েছে",
+    "সদস্য প্রত্যাহার/বহিষ্কার প্রক্রিয়া নথিভুক্ত",
+  ]},
+  { key: "fin", title: "আর্থিক ব্যবস্থাপনা", items: [
+    "হিসাবের বই (ক্যাশ বুক, লেজার) হালনাগাদ",
+    "গত অর্থবছরের নিরীক্ষা (অডিট) সম্পন্ন হয়েছে",
+    "নিরীক্ষা আপত্তি থাকলে তা সমাধান করা হয়েছে",
+    "প্রয়োজনীয় রিজার্ভ ফান্ড বজায় রাখা হয়েছে",
+    "ব্যাংক রিকনসিলিয়েশন নিয়মিত করা হয়",
+    "ঋণ/অগ্রিম বিতরণ ও আদায় যথাযথভাবে নথিভুক্ত (প্রযোজ্য ক্ষেত্রে)",
+  ]},
+  { key: "legal", title: "আইনি ও বিধিগত সম্মতি", items: [
+    "নিবন্ধন সনদ বৈধ ও দৃশ্যমান স্থানে প্রদর্শিত",
+    "নিবন্ধকের কাছে বার্ষিক রিটার্ন জমা দেওয়া হয়েছে",
+    "প্রযোজ্য লাইসেন্স/অনুমতি হালনাগাদ",
+    "কর সংক্রান্ত ফাইলিং (আয়কর/ভ্যাট) সম্পন্ন",
+  ]},
+  { key: "ops", title: "মূল কার্যক্রম (সেক্টর অনুযায়ী)", items: [
+    "দৈনন্দিন কার্যক্রম সমিতির উদ্দেশ্যের সাথে সামঞ্জস্যপূর্ণ",
+    "সংগ্রহ/সরবরাহ/উৎপাদন প্রক্রিয়া যথাযথভাবে অনুসরণ করা হয়",
+    "মূল্য নির্ধারণ ও বিলিং স্বচ্ছ",
+    "সদস্যদের সেবা প্রদান সন্তোষজনক মানের",
+  ]},
+  { key: "assets", title: "সম্পদ ও অবকাঠামো", items: [
+    "ভবন ও অবকাঠামো সংরক্ষিত অবস্থায় আছে",
+    "যন্ত্রপাতি নিয়মিত রক্ষণাবেক্ষণ করা হয়",
+    "অগ্নি নিরাপত্তা ব্যবস্থা কার্যকর",
+    "সম্পদের ভৌত নিরাপত্তা পর্যাপ্ত",
+  ]},
+  { key: "griev", title: "অভিযোগ নিষ্পত্তি", items: [
+    "অভিযোগ রেজিস্টার সংরক্ষিত",
+    "অভিযোগ নির্দিষ্ট সময়ের মধ্যে নিষ্পত্তি করা হয়",
+  ]},
+];
+
+let state = { society: "", type: "", answers: {}, remarks: {}, openSection: SECTIONS[0].key };
+
+function itemId(sKey, idx) { return sKey + "_" + idx; }
+
+function totalItems() { return SECTIONS.reduce((n, s) => n + s.items.length, 0); }
+function answeredItems() { return Object.keys(state.answers).filter(k => state.answers[k]).length; }
+
+function render() {
+  document.getElementById("societyName").value = state.society;
+  document.getElementById("societyType").value = state.type;
+
+  const container = document.getElementById("sectionsContainer");
+  container.innerHTML = "";
+
+  SECTIONS.forEach(sec => {
+    const doneCount = sec.items.filter((_, i) => state.answers[itemId(sec.key, i)]).length;
+    const isOpen = state.openSection === sec.key;
+
+    const card = document.createElement("div");
+    card.className = "section-card" + (isOpen ? " open" : "");
+
+    const head = document.createElement("div");
+    head.className = "section-head";
+    head.innerHTML = `
+      <div class="section-head-left">
+        <span class="section-title">${sec.title}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="chip ${doneCount === sec.items.length ? 'done' : ''}">${doneCount}/${sec.items.length}</span>
+        <span class="caret">▾</span>
+      </div>`;
+    head.onclick = () => { state.openSection = isOpen ? null : sec.key; render(); };
+    card.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "section-body";
+    sec.items.forEach((item, i) => {
+      const id = itemId(sec.key, i);
+      const current = state.answers[id] || "";
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.innerHTML = `
+        <div class="item-text">${item}</div>
+        <div class="item-controls">
+          <button class="seg-btn ${current === 'yes' ? 'active-yes' : ''}" data-id="${id}" data-val="yes">হ্যাঁ</button>
+          <button class="seg-btn ${current === 'no' ? 'active-no' : ''}" data-id="${id}" data-val="no">না</button>
+          <button class="seg-btn ${current === 'na' ? 'active-na' : ''}" data-id="${id}" data-val="na">প্রযোজ্য নয়</button>
+        </div>
+        <input class="remarks-input" data-remark="${id}" placeholder="মন্তব্য (ঐচ্ছিক)" value="${(state.remarks[id]||'').replace(/"/g,'&quot;')}">
+      `;
+      body.appendChild(row);
+    });
+    card.appendChild(body);
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id, val = btn.dataset.val;
+      state.answers[id] = state.answers[id] === val ? "" : val;
+      render();
+    };
+  });
+  container.querySelectorAll(".remarks-input").forEach(inp => {
+    inp.oninput = () => { state.remarks[inp.dataset.remark] = inp.value; };
+  });
+
+  const total = totalItems(), done = answeredItems();
+  document.getElementById("progressBar").style.width = (total ? (done/total*100) : 0) + "%";
+  document.getElementById("progressLabel").textContent = `${done} / ${total} আইটেম সম্পন্ন`;
+}
+
+document.getElementById("societyName").oninput = (e) => state.society = e.target.value;
+document.getElementById("societyType").oninput = (e) => state.type = e.target.value;
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+async function saveState() {
+  try {
+    await window.storage.set("coop-inspection-state", JSON.stringify(state), false);
+    showToast("সেভ হয়েছে ✓");
+  } catch (err) {
+    showToast("সেভ করা যায়নি — আবার চেষ্টা করুন");
+  }
+}
+
+async function loadState() {
+  try {
+    const res = await window.storage.get("coop-inspection-state", false);
+    if (res && res.value) {
+      const loaded = JSON.parse(res.value);
+      state = Object.assign(state, loaded);
+    }
+  } catch (err) {
+    // no saved state yet — fine
+  }
+  render();
+}
+
+document.getElementById("saveBtn").onclick = saveState;
+
+function buildChecklistSummary() {
+  let lines = [];
+  lines.push(`সমিতির নাম: ${state.society || "(উল্লেখ নেই)"}`);
+  lines.push(`ধরন: ${state.type || "(উল্লেখ নেই)"}`);
+  lines.push("");
+  SECTIONS.forEach(sec => {
+    lines.push(`## ${sec.title}`);
+    sec.items.forEach((item, i) => {
+      const id = itemId(sec.key, i);
+      const ans = state.answers[id] || "উত্তর দেওয়া হয়নি";
+      const ansLabel = { yes: "হ্যাঁ", no: "না", na: "প্রযোজ্য নয়" }[ans] || ans;
+      const remark = state.remarks[id] ? ` (মন্তব্য: ${state.remarks[id]})` : "";
+      lines.push(`- ${item}: ${ansLabel}${remark}`);
+    });
+    lines.push("");
+  });
+  return lines.join("\n");
+}
+
+async function generateReport() {
+  const modal = document.getElementById("modalOverlay");
+  const body = document.getElementById("modalBody");
+  modal.classList.add("show");
+  body.innerHTML = `<div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+
+  const checklistText = buildChecklistSummary();
+  const prompt = `তুমি একজন সমবায় সমিতি পরিদর্শক। নিচের পূরণ করা চেকলিস্টের ভিত্তিতে একটি প্রফেশনাল পরিদর্শন রিপোর্ট সারাংশ বাংলায় লেখো। রিপোর্টে থাকবে: ১) সার্বিক পর্যবেক্ষণ (সংক্ষিপ্ত), ২) মূল ঝুঁকি/দুর্বলতার ক্ষেত্র, ৩) সুনির্দিষ্ট সুপারিশ (পয়েন্ট আকারে)। শুধু রিপোর্টের লেখা দাও, কোনো ভূমিকা বা মার্কডাউন কোড ব্লক ছাড়া।\n\nচেকলিস্ট:\n${checklistText}`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    const data = await response.json();
+    const text = (data.content || []).map(b => b.text || "").join("\n").trim();
+    body.textContent = text || "রিপোর্ট তৈরি করা যায়নি — আবার চেষ্টা করুন।";
+    window._lastReport = text;
+  } catch (err) {
+    body.textContent = "একটি সমস্যা হয়েছে। ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।";
+  }
+}
+
+document.getElementById("generateBtn").onclick = generateReport;
+document.getElementById("modalClose").onclick = () => document.getElementById("modalOverlay").classList.remove("show");
+document.getElementById("modalDoneBtn").onclick = () => document.getElementById("modalOverlay").classList.remove("show");
+document.getElementById("copyBtn").onclick = () => {
+  const text = window._lastReport || document.getElementById("modalBody").textContent;
+  navigator.clipboard.writeText(text).then(() => showToast("কপি হয়েছে ✓")).catch(() => showToast("কপি করা যায়নি"));
+};
+
+loadState();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
